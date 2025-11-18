@@ -99,7 +99,7 @@ def upload_patient_file(patient_id: str, file, user_token: str):
     """
     Upload a patient's file to Supabase Storage and save record in DB.
     Accepts Streamlit UploadedFile objects.
-    `user_token` must be the Supabase JWT of the logged-in user.
+    Requires the logged-in user's JWT for authenticated upload.
     """
     if not file:
         return None
@@ -107,12 +107,10 @@ def upload_patient_file(patient_id: str, file, user_token: str):
     file_ext = file.name.split('.')[-1]
     file_name = f"{patient_id}/{uuid.uuid4()}.{file_ext}"
 
-    # Upload the file as bytes using the user's JWT
-    supabase_auth = supabase.auth_client(api_key=None, access_token=user_token)
-    res = supabase_auth.storage.from_('patient-files').upload(file_name, file.read())
+    # Upload with user_token to comply with RLS
+    res = supabase.storage.from_('patient-files').upload(file_name, file.read(), token=user_token)
 
     if res.status_code in [200, 201]:
-        # Insert record in patient_files table
         supabase.table('patient_files').insert({
             "patient_id": patient_id,
             "file_name": file_name,
