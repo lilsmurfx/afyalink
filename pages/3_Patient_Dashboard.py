@@ -9,6 +9,7 @@ from utils.database import (
     get_patient_files
 )
 from supabase_config import supabase
+from datetime import datetime
 
 # --- Access control ---
 if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
@@ -19,7 +20,7 @@ if st.session_state.get("role") != "patient":
     st.stop()
 
 st.set_page_config(page_title="Patient Dashboard", layout="wide")
-user_id = st.session_state["user_id"]
+user_id = st.session_state["user_id"]  # MUST match Supabase Auth UID
 user_name = get_user_name(user_id)
 
 # --- CSS ---
@@ -95,7 +96,9 @@ st.markdown('<div class="section-title">🧾 Upload Lab Reports / Prescriptions<
 uploaded_file = st.file_uploader("Choose a file", type=["pdf", "png", "jpg", "jpeg"])
 if uploaded_file:
     try:
-        upload_patient_file(user_id, uploaded_file)
+        # Read bytes from UploadedFile
+        file_bytes = uploaded_file.read()
+        upload_patient_file(user_id, uploaded_file)  # Ensure patient_id = auth.uid()
         st.success(f"File '{uploaded_file.name}' uploaded successfully!")
         st.experimental_rerun()
     except Exception as e:
@@ -106,8 +109,9 @@ st.markdown('<div class="section-title">📂 Uploaded Files</div>', unsafe_allow
 if uploaded_files:
     files_df = pd.DataFrame(uploaded_files).sort_values('uploaded_at', ascending=False)
     for _, row in files_df.iterrows():
-        st.write(f"- {row['original_name']} (Uploaded: {row['uploaded_at'].strftime('%d %b %Y %H:%M')})")
-        url = supabase.storage.from_('patient-files').get_public_url(row['file_name'])
+        uploaded_at_text = row['uploaded_at'].strftime('%d %b %Y %H:%M') if isinstance(row['uploaded_at'], datetime) else str(row['uploaded_at'])
+        st.write(f"- {row['original_name']} (Uploaded: {uploaded_at_text})")
+        url = supabase.storage.from_('patient-files').get_public_url(row['file_name'])['public_url']
         st.markdown(f"[Download]({url})")
 else:
     st.info("No uploaded files found.")
