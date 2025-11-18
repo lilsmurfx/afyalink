@@ -1,34 +1,116 @@
-from supabase_config import supabase
+# utils/auth.py
 
-def signup(email: str, password: str, role: str, full_name: str):
-    if not email or not password:
-        return {"error": "Email and password are required"}
+from database.db import supabase
 
-    user = supabase.auth.sign_up({"email": email, "password": password})
-    if user.user is None:
-        return {"error": "Signup failed. Check email or password."}
+# Replace with your JWT secret for optional token verification
+JWT_SECRET = "vVTbDjDDXDp/Yr7v7nhOZgwG1UBuk0kXy/GuiYskWLLearSKh+oXIo2hnLGswptQPFVWMDGOHv7P2pq9vksihA=="
 
-    # Insert into users table
-    supabase.table("users").insert({
-        "id": user.user.id,
-        "email": email,
-        "role": role,
-        "full_name": full_name
-    }).execute()
-
-    return {"success": True, "user_id": user.user.id}
-
+# ----------------------------
+# Login function
+# ----------------------------
 def login(email: str, password: str):
-    if not email or not password:
-        return {"error": "Email and password are required"}
+    """
+    Logs in a user using email and password.
+    Always returns a dict with keys: user, session, role, error
+    """
+    try:
+        res = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
 
-    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-    if res.user is None:
-        return {"error": "Login failed or email not confirmed"}
+        # If login failed
+        if res.get("error") or not res.get("user") or not res.get("session"):
+            return {
+                "user": None,
+                "session": None,
+                "role": None,
+                "error": res.get("error", {}).get("message", "Login failed")
+            }
 
-    # Fetch role from users table
-    user_data = supabase.table("users").select("*").eq("id", res.user.id).single().execute()
-    if not user_data.data:
-        return {"error": "User data not found"}
+        user_id = res["user"]["id"]
 
-    return {"user": res.user, "role": user_data.data["role"]}
+        # Fetch role from your users table (replace "patients" or "doctors" logic as needed)
+        role = fetch_user_role(user_id)
+
+        return {
+            "user": res["user"],
+            "session": res["session"],
+            "role": role,
+            "error": None
+        }
+
+    except Exception as e:
+        return {
+            "user": None,
+            "session": None,
+            "role": None,
+            "error": str(e)
+        }
+
+# ----------------------------
+# Signup function
+# ----------------------------
+def signup(email: str, password: str, role: str, full_name: str):
+    """
+    Signs up a user and inserts into role table (patients or doctors)
+    Returns dict with keys: user, session, role, error
+    """
+    try:
+        res = supabase.auth.sign_up({
+            "email": email,
+            "password": password
+        })
+
+        if res.get("error") or not res.get("user"):
+            return {
+                "user": None,
+                "session": None,
+                "role": None,
+                "error": res.get("error", {}).get("message", "Signup failed")
+            }
+
+        user_id = res["user"]["id"]
+
+        # Insert into role-specific table
+        table_name = "patients" if role == "patient" else "doctors"
+        supabase.table(table_name).insert({
+            "user_id": user_id,
+            "full_name": full_name,
+            "email": email
+        }).execute()
+
+        return {
+            "user": res["user"],
+            "session": None,  # Signup does not create session automatically
+            "role": role,
+            "error": None
+        }
+
+    except Exception as e:
+        return {
+            "user": None,
+            "session": None,
+            "role": None,
+            "error": str(e)
+        }
+
+# ----------------------------
+# Helper: fetch user role from your tables
+# ----------------------------
+def fetch_user_role(user_id: str):
+    """
+    Returns "patient", "doctor", or "admin" based on user_id
+    """
+    # Check patients table
+    patient = supabase.table("patients").select("id").eq("user_id", user_id).execute()
+    if patient.data:
+        return "patient"
+
+    # Check doctors table
+    doctor = supabase.table("doctors").select("id").eq("user_id", user_id).execute()
+    if doctor.data:
+        return "doctor"
+
+    # Default fallback
+    return "admin"
