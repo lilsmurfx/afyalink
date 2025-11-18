@@ -18,26 +18,24 @@ def get_all_patients():
 def add_patient(name: str, age: int, doctor_id: str, create_user: bool = True):
     """
     Add a new patient and optionally create a user account for them.
-    - create_user=True: also adds patient to 'users' table for login.
     """
     # Insert into patients table
     supabase.table("patients").insert({
         "name": name,
         "age": age,
         "doctor_id": doctor_id,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow().isoformat()
     }).execute()
 
-    # Optional: create a login user for the patient
+    # Optionally create a login user for the patient
     if create_user:
-        # Check if user already exists
         existing = supabase.table("users").select("*").eq("full_name", name).execute()
         if not existing.data:
             supabase.table("users").insert({
                 "full_name": name,
                 "role": "patient",
-                "email": "",  # Optionally add email
-                "password": ""  # Add default or random password handling
+                "email": "",  # Optional
+                "password": ""  # Handle default or random password
             }).execute()
 
 def get_user_name(user_id: str):
@@ -59,17 +57,17 @@ def add_record(patient_id: str, title: str, description: str):
         "patient_id": patient_id,
         "record_title": title,
         "description": description,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow().isoformat()
     }).execute()
 
 def add_appointment(doctor_id: str, patient_id: str, appointment_time: datetime):
-    """Add a new appointment"""
+    """Add a new appointment (datetime serialized to ISO)"""
     supabase.table("appointments").insert({
         "doctor_id": doctor_id,
         "patient_id": patient_id,
         "appointment_time": appointment_time.isoformat(),
         "status": "scheduled",
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow().isoformat()
     }).execute()
 
 # -----------------------
@@ -81,7 +79,14 @@ def get_user_appointments(user_id: str, role: str):
         res = supabase.table("appointments").select("*").eq("doctor_id", user_id).execute()
     else:
         res = supabase.table("appointments").select("*").eq("patient_id", user_id).execute()
-    return res.data if res.data else []
+    # Convert datetime fields to Python datetime objects for charts
+    appointments = res.data if res.data else []
+    for appt in appointments:
+        if "appointment_time" in appt:
+            appt["appointment_time"] = datetime.fromisoformat(appt["appointment_time"])
+        if "created_at" in appt:
+            appt["created_at"] = datetime.fromisoformat(appt["created_at"])
+    return appointments
 
 # -----------------------
 # Patient records
@@ -89,7 +94,11 @@ def get_user_appointments(user_id: str, role: str):
 def get_patient_records(patient_id: str):
     """Get medical records for a patient"""
     res = supabase.table("medical_records").select("*").eq("patient_id", patient_id).execute()
-    return res.data if res.data else []
+    records = res.data if res.data else []
+    for r in records:
+        if "created_at" in r:
+            r["created_at"] = datetime.fromisoformat(r["created_at"])
+    return records
 
 # -----------------------
 # Admin / Unassign
@@ -106,15 +115,11 @@ def upload_patient_file(patient_id: str, file):
     if not file:
         return None
 
-    # Generate a unique filename
     file_ext = file.name.split('.')[-1]
     file_name = f"{patient_id}/{uuid.uuid4()}.{file_ext}"
 
-    # Upload to storage bucket "patient-files"
     res = supabase.storage.from_('patient-files').upload(file_name, file)
-
     if res.status_code in [200, 201]:
-        # Save file metadata in DB
         supabase.table('patient_files').insert({
             "patient_id": patient_id,
             "file_name": file_name,
@@ -128,4 +133,8 @@ def upload_patient_file(patient_id: str, file):
 def get_patient_files(patient_id: str):
     """Return all files uploaded by a patient"""
     res = supabase.table('patient_files').select("*").eq("patient_id", patient_id).execute()
-    return res.data if res.data else []
+    files = res.data if res.data else []
+    for f in files:
+        if "uploaded_at" in f:
+            f["uploaded_at"] = datetime.fromisoformat(f["uploaded_at"])
+    return files
