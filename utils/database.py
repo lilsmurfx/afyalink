@@ -107,10 +107,11 @@ def upload_patient_file(patient_id: str, file, user_token: str):
     file_ext = file.name.split('.')[-1]
     file_name = f"{patient_id}/{uuid.uuid4()}.{file_ext}"
 
-    # Upload with user_token to comply with RLS
+    # Upload file using the user's JWT token (RLS compliant)
     res = supabase.storage.from_('patient-files').upload(file_name, file.read(), token=user_token)
 
     if res.status_code in [200, 201]:
+        # Record file metadata in database
         supabase.table('patient_files').insert({
             "patient_id": patient_id,
             "file_name": file_name,
