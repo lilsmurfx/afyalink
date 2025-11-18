@@ -5,9 +5,9 @@ from utils.database import get_user_name
 st.set_page_config(page_title="AfyaLink", layout="wide")
 
 # --- Initialize session state ---
-for key in ["logged_in", "trigger_rerun", "login_email", "login_pass", "access_token", "user_id", "role", "full_name"]:
+for key in ["logged_in", "trigger_rerun", "login_email", "login_pass", "user_id", "role", "full_name"]:
     if key not in st.session_state:
-        st.session_state[key] = None if key in ["access_token", "user_id", "role", "full_name"] else False if key=="logged_in" else ""
+        st.session_state[key] = None if key in ["user_id", "role", "full_name"] else False if key=="logged_in" else ""
 
 # --- Header / Description ---
 st.markdown(
@@ -66,28 +66,21 @@ if not st.session_state["logged_in"]:
         if st.button("Login"):
             res = login(email, password)
 
-        # --- Safe handling of login response ---
-if not res:
-    st.error("Login failed. No response from server.")
-elif res.get("error"):
-    st.error(res.get("error", "Login failed. Check credentials."))
-else:
-    # Extract session safely
-    session = res.get("session")
-    user = res.get("user")
-    if not session or not user:
-        st.error("Login failed: No session returned. Check credentials or Supabase auth.")
-    else:
-        access_token = session.get("access_token")  # safely get JWT
-        st.session_state.update({
-            "logged_in": True,
-            "user_id": user.get("id"),
-            "role": res.get("role", "user"),
-            "full_name": get_user_name(user.get("id")),
-            "access_token": access_token,
-            "trigger_rerun": not st.session_state["trigger_rerun"]
-        })
-        st.experimental_rerun()
+            # --- Handle login without session/JWT ---
+            if not res or res.get("error"):
+                st.error(res.get("error", "Login failed. Check credentials."))
+            elif not res.get("user"):
+                st.error("Login failed: user not found.")
+            else:
+                user = res["user"]
+                st.session_state.update({
+                    "logged_in": True,
+                    "user_id": user.get("id"),
+                    "role": res.get("role", "user"),
+                    "full_name": get_user_name(user.get("id")),
+                    "trigger_rerun": not st.session_state["trigger_rerun"]
+                })
+                st.experimental_rerun()
 
     # -------- Sign Up Tab --------
     with tabs[1]:
@@ -117,7 +110,6 @@ else:
             "full_name": None,
             "login_email": "",
             "login_pass": "",
-            "access_token": None,
             "trigger_rerun": not st.session_state["trigger_rerun"]
         })
         st.experimental_rerun()
