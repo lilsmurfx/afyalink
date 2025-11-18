@@ -21,7 +21,6 @@ if st.session_state.get("role") != "patient":
 
 st.set_page_config(page_title="Patient Dashboard", layout="wide")
 user_id = st.session_state["user_id"]  # Must match Supabase Auth UID
-user_token = st.session_state.get("supabase_token")  # Store JWT after login
 user_name = get_user_name(user_id)
 
 # --- CSS ---
@@ -97,9 +96,9 @@ st.markdown('<div class="section-title">🧾 Upload Lab Reports / Prescriptions<
 uploaded_file = st.file_uploader("Choose a file", type=["pdf", "png", "jpg", "jpeg"])
 if uploaded_file:
     try:
-        upload_patient_file(user_id, uploaded_file, user_token)  # RLS-safe upload
+        upload_patient_file(user_id, uploaded_file)
         st.success(f"File '{uploaded_file.name}' uploaded successfully!")
-        st.experimental_rerun()  # Refresh page to show new file
+        st.experimental_rerun()  # Reload to show new file
     except Exception as e:
         st.error(f"Upload failed: {e}")
 
