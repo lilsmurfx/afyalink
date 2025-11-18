@@ -2,7 +2,7 @@
 
 from database.db import supabase
 
-# Your JWT secret (for verification if needed)
+# Your JWT secret (for later)
 JWT_SECRET = "vVTbDjDDXDp/Yr7v7nhOZgwG1UBuk0kXy/GuiYskWLLearSKh+oXIo2hnLGswptQPFVWMDGOHv7P2pq9vksihA=="
 
 # ----------------------------
@@ -12,6 +12,7 @@ def login(email: str, password: str):
     """
     Logs in a user using email and password.
     Always returns a dict with keys: user, session, role, error
+    Login succeeds even if no JWT/session is returned.
     """
     try:
         res = supabase.auth.sign_in_with_password({
@@ -20,7 +21,7 @@ def login(email: str, password: str):
         })
 
         # If login failed
-        if res.get("error") or not res.get("user") or not res.get("session"):
+        if res.get("error") or not res.get("user"):
             return {
                 "user": None,
                 "session": None,
@@ -30,12 +31,13 @@ def login(email: str, password: str):
 
         user_id = res["user"]["id"]
 
-        # Fetch role from your tables
-        role = fetch_user_role(user_id)
+        # Determine user role
+        role = get_role_from_db(user_id)
 
+        # Accept that session may be None
         return {
-            "user": res["user"],
-            "session": res["session"],
+            "user": res.get("user"),
+            "session": res.get("session"),  # may be None
             "role": role,
             "error": None
         }
@@ -50,12 +52,11 @@ def login(email: str, password: str):
 
 
 # ----------------------------
-# Signup function
+# Signup
 # ----------------------------
 def signup(email: str, password: str, role: str, full_name: str):
     """
-    Signs up a user and inserts into role table (patients or doctors)
-    Returns dict with keys: user, session, role, error
+    Registers a new user and inserts into patients or doctors table
     """
     try:
         res = supabase.auth.sign_up({
@@ -74,17 +75,14 @@ def signup(email: str, password: str, role: str, full_name: str):
         user_id = res["user"]["id"]
 
         # Insert into role-specific table
-        table_name = "patients" if role == "patient" else "doctors"
-        supabase.table(table_name).insert({
-            "user_id": user_id,
-            "full_name": full_name,
-            "email": email
-        }).execute()
+        if role == "patient":
+            supabase.table("patients").insert({"user_id": user_id, "full_name": full_name}).execute()
+        else:
+            supabase.table("doctors").insert({"user_id": user_id, "full_name": full_name}).execute()
 
-        # Signup does not create session automatically
         return {
-            "user": res["user"],
-            "session": None,
+            "user": res.get("user"),
+            "session": res.get("session"),
             "role": role,
             "error": None
         }
@@ -99,21 +97,18 @@ def signup(email: str, password: str, role: str, full_name: str):
 
 
 # ----------------------------
-# Helper: fetch user role
+# Determine role
 # ----------------------------
-def fetch_user_role(user_id: str):
+def get_role_from_db(user_id: str):
     """
-    Returns "patient", "doctor", or "admin" based on user_id
+    Returns "patient", "doctor", or "admin"
     """
-    # Check patients table
     patient = supabase.table("patients").select("id").eq("user_id", user_id).execute()
     if patient.data:
         return "patient"
 
-    # Check doctors table
     doctor = supabase.table("doctors").select("id").eq("user_id", user_id).execute()
     if doctor.data:
         return "doctor"
 
-    # Default fallback
     return "admin"
